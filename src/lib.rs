@@ -2,31 +2,124 @@ use lay::Operations;
 use lay::gates::{CliffordGate};
 use lay_simulator_gk::{ GottesmanKnillSimulator, DefaultRng, Qubit };
 
+const PHISQUBIT_PER_LOGQUBIT: Qubit = 7;
+const MEASURE_ANCILLA_QUBITS: Qubit = 6;
+const MEASURE_MASK: u32 = 127;
+
 pub struct SteaneLayer {
     sim: GottesmanKnillSimulator<DefaultRng>,
+    n_logical_qubits: Qubit
 }
 
 impl SteaneLayer {
-    pub fn new(n: Qubit) -> Self {
-        Self { sim: GottesmanKnillSimulator::from_seed(7 * n + 6, 0) }
+    pub fn new(n_qubits: Qubit) -> Self {
+        Self {
+            sim: GottesmanKnillSimulator::from_seed(PHISQUBIT_PER_LOGQUBIT * n_qubits + MEASURE_ANCILLA_QUBITS, 0),
+            n_logical_qubits: n_qubits }
+    }
+
+    fn measure_ancilla(&self) -> Qubit {
+        self.sim.n_qubits() as Qubit - 6
+    }
+
+    fn syndrome_measure_and_recover(&mut self) {
+        let m0 = self.measure_ancilla();
+        for i in 0..m0 {
+            self.sim.h(i);
+        }
+        for i in 0..self.n_logical_qubits {
+            for j in i * PHISQUBIT_PER_LOGQUBIT..(i + 1) * PHISQUBIT_PER_LOGQUBIT {
+                self.sim.h(j);
+            }
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT, m0);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 1, m0 + 1);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 2, m0 + 2);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 3, m0 + 1);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 3, m0 + 2);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 4, m0);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 4, m0 + 2);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 5, m0);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 5, m0 + 1);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 5, m0 + 2);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 1);
+            for j in i * PHISQUBIT_PER_LOGQUBIT..(i + 1) * PHISQUBIT_PER_LOGQUBIT {
+                self.sim.h(j);
+            }
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT, m0 + 3);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT, m0 + 5);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 1, m0 + 4);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 1, m0 + 5);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 2, m0 + 4);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 2, m0 + 5);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 2, m0 + 6);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 3, m0 + 4);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 4, m0 + 5);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 5, m0 + 6);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 4);
+            self.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 5);
+            for j in 0..PHISQUBIT_PER_LOGQUBIT {
+                self.sim.measure(i * PHISQUBIT_PER_LOGQUBIT + j, j);
+            }
+            let measured = self.sim.measured.inner[0] & MEASURE_MASK;
+            for j in 0..PHISQUBIT_PER_LOGQUBIT {
+                // reset
+                if measured & (1 << j) != 0 {
+                    self.x(i * PHISQUBIT_PER_LOGQUBIT + j);
+                }
+            }
+        }
+        // TODO: 測ったやつ、どうすればいいんだっけ?
     }
 }
 
 impl Operations for SteaneLayer {
     type Qubit = Qubit;
     type Slot = Qubit;
-    fn initialize(&mut self) { todo!() }
-    fn measure(&mut self, _: <Self as lay::Operations>::Qubit, _: <Self as lay::Operations>::Slot) { todo!() }
+    fn initialize(&mut self) {
+        self.sim.initialize();
+    }
+    fn measure(&mut self, q: <Self as lay::Operations>::Qubit, c: <Self as lay::Operations>::Slot) {
+
+    }
 }
 
 impl CliffordGate for SteaneLayer {
-   fn x(&mut self, _: <Self as lay::Operations>::Qubit) { todo!() }
-   fn y(&mut self, _: <Self as lay::Operations>::Qubit) { todo!() }
-   fn z(&mut self, _: <Self as lay::Operations>::Qubit) { todo!() }
-   fn h(&mut self, _: <Self as lay::Operations>::Qubit) { todo!() }
-   fn s(&mut self, _: <Self as lay::Operations>::Qubit) { todo!() }
-   fn sdg(&mut self, _: <Self as lay::Operations>::Qubit) { todo!() }
-   fn cx(&mut self, _: <Self as lay::Operations>::Qubit, _: <Self as lay::Operations>::Qubit) { todo!() }
+   fn x(&mut self, q: <Self as lay::Operations>::Qubit) {
+       for i in (q * PHISQUBIT_PER_LOGQUBIT)..(q * PHISQUBIT_PER_LOGQUBIT + PHISQUBIT_PER_LOGQUBIT) {
+           self.sim.x(i);
+       }
+   }
+   fn y(&mut self, q: <Self as lay::Operations>::Qubit) {
+       for i in (q * PHISQUBIT_PER_LOGQUBIT)..(q * PHISQUBIT_PER_LOGQUBIT + PHISQUBIT_PER_LOGQUBIT) {
+           self.sim.y(i);
+       }
+   }
+   fn z(&mut self, q: <Self as lay::Operations>::Qubit) {
+       for i in (q * PHISQUBIT_PER_LOGQUBIT)..(q * PHISQUBIT_PER_LOGQUBIT + PHISQUBIT_PER_LOGQUBIT) {
+           self.sim.z(i);
+       }
+   }
+   fn h(&mut self, q: <Self as lay::Operations>::Qubit) {
+       for i in (q * PHISQUBIT_PER_LOGQUBIT)..(q * PHISQUBIT_PER_LOGQUBIT + PHISQUBIT_PER_LOGQUBIT) {
+           self.sim.h(i);
+       }
+   }
+   fn s(&mut self, q: <Self as lay::Operations>::Qubit) {
+       for i in (q * PHISQUBIT_PER_LOGQUBIT)..(q * PHISQUBIT_PER_LOGQUBIT + PHISQUBIT_PER_LOGQUBIT) {
+           self.sim.s(i);
+       }
+   }
+   fn sdg(&mut self, q: <Self as lay::Operations>::Qubit) {
+       for i in (q * PHISQUBIT_PER_LOGQUBIT)..(q * PHISQUBIT_PER_LOGQUBIT + PHISQUBIT_PER_LOGQUBIT) {
+           self.sim.sdg(i);
+       }
+   }
+   fn cx(&mut self, c: <Self as lay::Operations>::Qubit, t: <Self as lay::Operations>::Qubit) {
+       for i in 0..PHISQUBIT_PER_LOGQUBIT {
+           self.sim.cx(c * PHISQUBIT_PER_LOGQUBIT + i, t * PHISQUBIT_PER_LOGQUBIT + i);
+       }
+   }
 }
 
 
