@@ -11,6 +11,9 @@ pub struct SteaneLayer {
     n_logical_qubits: Qubit
 }
 
+const ERR_TABLE_X: [u32;8] = [999 /* dummy */, 0, 1, 6, 2, 4, 3, 5];
+const ERR_TABLE_Z: [u32;8] = [999 /* dummy */, 3, 4, 6, 5, 0, 1, 2];
+
 impl SteaneLayer {
     pub fn new(n_qubits: Qubit) -> Self {
         Self {
@@ -68,8 +71,15 @@ impl SteaneLayer {
                     self.x(i * PHISQUBIT_PER_LOGQUBIT + j);
                 }
             }
+            if measured & 7 > 0 {
+                let err_x = ERR_TABLE_X[(measured & 7) as usize];
+                self.x(err_x);
+            }
+            if (measured >> 3) > 0 {
+                let err_z = ERR_TABLE_X[(measured >> 3) as usize];
+                self.z(err_z);
+            }
         }
-        // TODO: 測ったやつ、どうすればいいんだっけ?
     }
 }
 
