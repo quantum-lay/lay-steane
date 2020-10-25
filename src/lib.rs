@@ -23,15 +23,15 @@ impl SteaneLayer {
     }
 
     fn measure_ancilla(&self) -> Qubit {
-        self.sim.n_qubits() as Qubit - 6
+        self.sim.n_qubits() as Qubit - MEASURE_ANCILLA_QUBITS
     }
 
     fn syndrome_measure_and_recover(&mut self) {
         eprintln!("START syndrome_measure_and_recover");
         let m0 = self.measure_ancilla();
         for i in 0..self.n_logical_qubits {
-            for j in i * PHISQUBIT_PER_LOGQUBIT..(i + 1) * PHISQUBIT_PER_LOGQUBIT {
-                self.sim.h(j);
+            for j in 0..PHISQUBIT_PER_LOGQUBIT {
+                self.sim.h(i * PHISQUBIT_PER_LOGQUBIT + j);
             }
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT, m0);
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 1, m0 + 1);
@@ -45,8 +45,9 @@ impl SteaneLayer {
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 5, m0 + 2);
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0);
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 1);
-            for j in i * PHISQUBIT_PER_LOGQUBIT..(i + 1) * PHISQUBIT_PER_LOGQUBIT {
-                self.sim.h(j);
+
+            for j in 0..PHISQUBIT_PER_LOGQUBIT {
+                self.sim.h(i * PHISQUBIT_PER_LOGQUBIT + j);
             }
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT, m0 + 3);
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT, m0 + 5);
@@ -61,27 +62,27 @@ impl SteaneLayer {
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 3);
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 4);
             for j in 0..MEASURE_ANCILLA_QUBITS {
-                self.sim.measure(i * PHISQUBIT_PER_LOGQUBIT + j, j);
+                self.sim.measure(m0 + j, j);
             }
             // TODO: バックエンド変わったときダメ。まともな方法
             let measured = self.sim.measured.inner[0] & MEASURE_MASK;
             self.sim.measured.inner[0] = 0;
             eprintln!("logical qubit: {}, measured: {:b}", i, measured);
-            for j in 0..PHISQUBIT_PER_LOGQUBIT {
+            for j in 0..MEASURE_ANCILLA_QUBITS {
                 // reset
                 if measured & (1 << j) != 0 {
-                    self.sim.x(i * PHISQUBIT_PER_LOGQUBIT + j);
+                    self.sim.x(m0 + j);
                 }
             }
             if measured & 7 > 0 {
                 let err_x = ERR_TABLE_X[(measured & 7) as usize] + i * PHISQUBIT_PER_LOGQUBIT;
-                eprintln!("X Err on {}", err_x);
-                self.sim.x(err_x);
+                eprintln!("Z Err on {}", err_x);
+                self.sim.z(err_x);
             }
             if (measured >> 3) > 0 {
-                let err_z = ERR_TABLE_X[(measured >> 3) as usize] + i * PHISQUBIT_PER_LOGQUBIT;
-                eprintln!("Z Err on {}", err_z);
-                self.sim.z(err_z);
+                let err_z = ERR_TABLE_Z[(measured >> 3) as usize] + i * PHISQUBIT_PER_LOGQUBIT;
+                eprintln!("X Err on {}", err_z);
+                self.sim.x(err_z);
             }
         }
         eprintln!("END   syndrome_measure_and_recover");
