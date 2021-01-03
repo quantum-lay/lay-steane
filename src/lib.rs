@@ -61,7 +61,8 @@ impl SteaneLayer {
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 3);
             self.sim.cx(i * PHISQUBIT_PER_LOGQUBIT + 6, m0 + 4);
             for j in 0..MEASURE_ANCILLA_QUBITS {
-                self.sim.measure(i * PHISQUBIT_PER_LOGQUBIT + j, j);
+                //self.sim.measure(i * PHISQUBIT_PER_LOGQUBIT + j, j);
+                self.sim.measure(j, j);
             }
             // TODO: バックエンド変わったときダメ。まともな方法
             let measured = self.sim.measured.inner[0] & MEASURE_MASK;
