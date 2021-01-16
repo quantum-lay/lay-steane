@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 lay = { path = "../lay" }
 lay-simulator-gk = { path = "../lay-simulator-gk" }
+num-traits = "0.2.14"
