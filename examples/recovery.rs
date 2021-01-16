@@ -1,10 +1,11 @@
 use lay::{Layer, OpsVec};
+use lay_simulator_gk::GottesmanKnillSimulator;
 use lay_steane::{SteaneLayer, Syndrome};
 
 fn main() {
     let mut steane = SteaneLayer::from_seed_with_gk(1, 16);
     let mut ops = OpsVec::new();
-    let mut inner_ops = OpsVec::new();
+    let mut inner_ops = OpsVec::<GottesmanKnillSimulator<_>>::new();
     ops.initialize();
     steane.send(ops.as_ref());
     eprintln!("END Initialize");

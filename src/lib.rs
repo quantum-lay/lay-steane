@@ -1,4 +1,4 @@
-use lay::{Layer, Measured, Operation, OpsVec, operations::opid, gates::{PauliGate, HGate, SGate, CXGate}};
+use lay::{Layer, Measured, OpsVec, operations::{opid, OpArgs, Operation}, gates::{PauliGate, HGate, SGate, CXGate}};
 use lay_simulator_gk::{ GottesmanKnillSimulator, DefaultRng };
 
 use num_traits::cast::{cast, NumCast};
@@ -44,26 +44,28 @@ impl Measured for Buf {
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> Layer for SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation: Operation<L>,
         L::Qubit: NumCast,
         L::Slot : NumCast,
 {
+    type Operation = OpArgs<Self>;
     type Qubit = u32;
     type Slot = u32;
     type Buffer = Buf;
     type Requested = L::Requested;
     type Response = L::Response;
 
-    fn send(&mut self, ops: &[Operation<SteaneLayer<L>>]) -> L::Requested {
+    fn send(&mut self, ops: &[Self::Operation]) -> L::Requested {
         let mut lowlevel_ops = OpsVec::new();
         for op in ops {
             match op {
-                Operation::Empty(id) if *id == opid::INIT => {
+                OpArgs::Empty(id) if *id == opid::INIT => {
                     self.initialize(&mut lowlevel_ops);
                 },
-                Operation::Empty(id) if *id == opid::USERDEF => {
+                OpArgs::Empty(id) if *id == opid::USERDEF => {
                     self.syndrome_measure_and_recover(&mut lowlevel_ops);
                 },
-                Operation::Q(id, q) => {
+                OpArgs::Q(id, q) => {
                     match *id {
                         opid::X => {
                             self.x(*q, &mut lowlevel_ops);
@@ -88,7 +90,7 @@ where
                         }
                     }
                 },
-                Operation::QQ(id, c, t) if *id == opid::CX => {
+                OpArgs::QQ(id, c, t) if *id == opid::CX => {
                     self.cx(*c, *t, &mut lowlevel_ops);
                 },
                 _ => unimplemented!("Unknown op")
@@ -102,7 +104,7 @@ where
         self.instance.receive(&mut buf)
     }
 
-    fn send_receive(&mut self, ops: &[Operation<SteaneLayer<L>>], buf: &mut Buf) -> L::Response {
+    fn send_receive(&mut self, ops: &[Self::Operation], buf: &mut Buf) -> L::Response {
         self.send(&ops);
         self.receive(buf)
     }
@@ -115,30 +117,35 @@ where
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> PauliGate for SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation: Operation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> HGate for SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + CXGate,
+        L::Operation: Operation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> SGate for SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + CXGate,
+        L::Operation: Operation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> CXGate for SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + CXGate,
+        L::Operation: Operation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + CXGate,
+        L::Operation: Operation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast,
 {
@@ -262,6 +269,7 @@ where
 pub trait Syndrome<L>
 where
         L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation : Operation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast
 {
@@ -271,11 +279,12 @@ where
 impl<L> Syndrome<L> for OpsVec<SteaneLayer<L>>
 where
         L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation : Operation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast
 {
     fn syndrome(&mut self) {
-        self.as_mut_vec().push(Operation::Empty(opid::USERDEF));
+        self.as_mut_vec().push(OpArgs::Empty(opid::USERDEF));
     }
 }
 
@@ -296,7 +305,7 @@ mod tests {
     #[test]
     fn it_works2() {
         let mut steane = SteaneLayer::from_seed_with_gk(1, 16);
-        let mut ops = OpsVec::new();
+        let mut ops = OpsVec::<SteaneLayer<_>>::new();
         ops.initialize();
         steane.send(ops.as_ref());
         /*
