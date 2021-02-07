@@ -1,4 +1,4 @@
-use lay::{Layer, Measured, OpsVec, operations::{opid, OpArgs, Operation}, gates::{PauliGate, HGate, SGate, CXGate}};
+use lay::{Layer, Measured, OpsVec, operations::{opid, OpArgs, Operation, PauliOperation, HOperation, SOperation, CXOperation}, gates::{PauliGate, HGate, SGate, CXGate}};
 use lay_simulator_gk::{ GottesmanKnillSimulator, DefaultRng };
 
 use num_traits::cast::{cast, NumCast};
@@ -35,8 +35,10 @@ impl SteaneLayer<GottesmanKnillSimulator<DefaultRng>> {
     }
 }
 
-pub struct Buf();
-impl Measured for Buf {
+pub struct SteaneBuffer<B>(B);
+
+impl<B: Measured<Slot=impl NumCast>> Measured for SteaneBuffer<B>
+{
     type Slot = u32;
     fn get(&self, _: u32) -> bool { false }
 }
@@ -44,14 +46,14 @@ impl Measured for Buf {
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> Layer for SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + SGate + CXGate,
-        L::Operation: Operation<L>,
+        L::Operation: Operation<L> + PauliOperation<L> + HOperation<L> + SOperation<L> + CXOperation<L>,
         L::Qubit: NumCast,
         L::Slot : NumCast,
 {
     type Operation = OpArgs<Self>;
     type Qubit = u32;
     type Slot = u32;
-    type Buffer = Buf;
+    type Buffer = SteaneBuffer<L::Buffer>;
     type Requested = L::Requested;
     type Response = L::Response;
 
@@ -90,6 +92,9 @@ where
                         }
                     }
                 },
+                OpArgs::QS(id, q, s) if *id == opid::MEAS => {
+                    self.measure(*q, *s, &mut lowlevel_ops);
+                },
                 OpArgs::QQ(id, c, t) if *id == opid::CX => {
                     self.cx(*c, *t, &mut lowlevel_ops);
                 },
@@ -99,53 +104,52 @@ where
         self.instance.send(lowlevel_ops.as_ref())
     }
 
-    fn receive(&mut self, _: &mut Buf) -> L::Response {
-        let mut buf = self.instance.make_buffer();
-        self.instance.receive(&mut buf)
+    fn receive(&mut self, buf: &mut Self::Buffer) -> L::Response {
+        self.instance.receive(&mut buf.0)
     }
 
-    fn send_receive(&mut self, ops: &[Self::Operation], buf: &mut Buf) -> L::Response {
+    fn send_receive(&mut self, ops: &[Self::Operation], buf: &mut Self::Buffer) -> L::Response {
         self.send(&ops);
         self.receive(buf)
     }
 
-    fn make_buffer(&self) -> Buf {
-        Buf()
+    fn make_buffer(&self) -> Self::Buffer {
+        SteaneBuffer(self.instance.make_buffer())
     }
 }
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> PauliGate for SteaneLayer<L>
 where
         L : Layer + PauliGate + HGate + SGate + CXGate,
-        L::Operation: Operation<L>,
+        L::Operation: Operation<L> + PauliOperation<L> + HOperation<L> + SOperation<L> + CXOperation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> HGate for SteaneLayer<L>
 where
-        L : Layer + PauliGate + HGate + CXGate,
-        L::Operation: Operation<L>,
+        L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation: Operation<L> + PauliOperation<L> + HOperation<L> + SOperation<L> + CXOperation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> SGate for SteaneLayer<L>
 where
-        L : Layer + PauliGate + HGate + CXGate,
-        L::Operation: Operation<L>,
+        L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation: Operation<L> + PauliOperation<L> + HOperation<L> + SOperation<L> + CXOperation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> CXGate for SteaneLayer<L>
 where
-        L : Layer + PauliGate + HGate + CXGate,
-        L::Operation: Operation<L>,
+        L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation: Operation<L> + PauliOperation<L> + HOperation<L> + SOperation<L> + CXOperation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast {}
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> SteaneLayer<L>
 where
-        L : Layer + PauliGate + HGate + CXGate,
-        L::Operation: Operation<L>,
+        L : Layer + PauliGate + HGate + SGate + CXGate,
+        L::Operation: Operation<L> + PauliOperation<L> + HOperation<L> + SOperation<L> + CXOperation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast,
 {
@@ -264,6 +268,12 @@ where
             ops.cx(cast!(c * PHYSQUBIT_PER_LOGQUBIT + i), cast!(t * PHYSQUBIT_PER_LOGQUBIT + i));
         }
     }
+
+    fn measure(&mut self, q: u32, s: u32, ops: &mut OpsVec<L>) {
+        for i in 0..PHYSQUBIT_PER_LOGQUBIT {
+            ops.measure(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i), cast!(s * PHYSQUBIT_PER_LOGQUBIT + i));
+        }
+    }
 }
 
 pub trait Syndrome<L>
@@ -279,7 +289,7 @@ where
 impl<L> Syndrome<L> for OpsVec<SteaneLayer<L>>
 where
         L : Layer + PauliGate + HGate + SGate + CXGate,
-        L::Operation : Operation<L>,
+        L::Operation : Operation<L> + PauliOperation<L> + HOperation<L> + SOperation<L> + CXOperation<L>,
         L::Qubit : NumCast,
         L::Slot : NumCast
 {
@@ -293,8 +303,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use lay::{Layer, OpsVec};
+    #[allow(unused_imports)]
     use lay_simulator_gk::{ GottesmanKnillSimulator, DefaultRng };
+    #[allow(unused_imports)]
     use crate::{SteaneLayer, Syndrome};
 
     #[test]
