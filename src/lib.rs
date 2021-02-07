@@ -7,7 +7,7 @@ macro_rules! cast { ($n:expr) => { cast($n).unwrap() } }
 
 const PHYSQUBIT_PER_LOGQUBIT: u32 = 7;
 const MEASURE_ANCILLA_QUBITS: u32 = 6;
-// const MEASURE_MASK: u32 = 127;
+const MEASURE_THRESHOLD: u32 = 4;
 
 pub struct SteaneLayer<L> {
     pub instance: L,
@@ -40,7 +40,10 @@ pub struct SteaneBuffer<B>(B);
 impl<B: Measured<Slot=impl NumCast>> Measured for SteaneBuffer<B>
 {
     type Slot = u32;
-    fn get(&self, _: u32) -> bool { false }
+    fn get(&self, s: u32) -> bool {
+        self.get_range_u8((s * PHYSQUBIT_PER_LOGQUBIT) as usize,
+                          ((s + 1) * PHYSQUBIT_PER_LOGQUBIT) as usize).count_ones() >= MEASURE_THRESHOLD
+    }
 }
 
 impl<L: Layer + PauliGate + HGate + SGate + CXGate> Layer for SteaneLayer<L>
@@ -297,9 +300,6 @@ where
         self.as_mut_vec().push(OpArgs::Empty(opid::USERDEF));
     }
 }
-
-
-
 
 #[cfg(test)]
 mod tests {
