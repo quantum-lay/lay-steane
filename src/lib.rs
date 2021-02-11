@@ -9,9 +9,11 @@ const PHYSQUBIT_PER_LOGQUBIT: u32 = 7;
 const MEASURE_ANCILLA_QUBITS: u32 = 6;
 const MEASURE_THRESHOLD: u32 = 4;
 
-pub struct SteaneLayer<L> {
+pub struct SteaneLayer<L: Layer> {
     pub instance: L,
     n_logical_qubits: u32,
+    instance_buf: L::Buffer,
+    measured: Vec<bool>,
 }
 
 const ERR_TABLE_X: [u32;8] = [999 /* dummy */, 0, 1, 6, 2, 4, 3, 5];
@@ -21,28 +23,32 @@ pub fn required_physical_qubits(n_logical_qubits: u32) -> u32 {
     PHYSQUBIT_PER_LOGQUBIT * n_logical_qubits + MEASURE_ANCILLA_QUBITS
 }
 
-impl<L> SteaneLayer<L> {
+impl<L: Layer> SteaneLayer<L> {
     pub fn from_instance(instance: L, n_logical_qubits: u32) -> Self {
-        Self { instance, n_logical_qubits }
+        let instance_buf = instance.make_buffer();
+        Self { instance,
+               n_logical_qubits,
+               instance_buf,
+               measured: vec![false; n_logical_qubits as usize]
+        }
     }
 }
 
 impl SteaneLayer<GottesmanKnillSimulator<DefaultRng>> {
-    pub fn from_seed_with_gk(seed: u64, n_logical_qubits: u32) -> Self {
+    pub fn from_seed_with_gk(n_logical_qubits: u32, seed: u64) -> Self {
         SteaneLayer::from_instance(
             GottesmanKnillSimulator::from_seed(required_physical_qubits(n_logical_qubits) as _, seed),
             n_logical_qubits)
     }
 }
 
-pub struct SteaneBuffer<B>(B);
+pub struct SteaneBuffer(Vec<bool>);
 
-impl<B: Measured<Slot=impl NumCast>> Measured for SteaneBuffer<B>
+impl Measured for SteaneBuffer
 {
     type Slot = u32;
     fn get(&self, s: u32) -> bool {
-        self.get_range_u8((s * PHYSQUBIT_PER_LOGQUBIT) as usize,
-                          ((s + 1) * PHYSQUBIT_PER_LOGQUBIT) as usize).count_ones() >= MEASURE_THRESHOLD
+        (self.0)[s as usize]
     }
 }
 
@@ -56,7 +62,7 @@ where
     type Operation = OpArgs<Self>;
     type Qubit = u32;
     type Slot = u32;
-    type Buffer = SteaneBuffer<L::Buffer>;
+    type Buffer = SteaneBuffer;
     type Requested = L::Requested;
     type Response = L::Response;
 
@@ -108,7 +114,9 @@ where
     }
 
     fn receive(&mut self, buf: &mut Self::Buffer) -> L::Response {
-        self.instance.receive(&mut buf.0)
+        let res = self.instance.receive(&mut self.instance_buf);
+        std::mem::swap(&mut self.measured, &mut buf.0);
+        res
     }
 
     fn send_receive(&mut self, ops: &[Self::Operation], buf: &mut Self::Buffer) -> L::Response {
@@ -117,7 +125,7 @@ where
     }
 
     fn make_buffer(&self) -> Self::Buffer {
-        SteaneBuffer(self.instance.make_buffer())
+        SteaneBuffer(vec![false; self.n_logical_qubits as usize])
     }
 }
 
@@ -233,6 +241,7 @@ where
     fn x(&mut self, q: u32, ops: &mut OpsVec<L>) {
         for i in (q * PHYSQUBIT_PER_LOGQUBIT)..(q * PHYSQUBIT_PER_LOGQUBIT + PHYSQUBIT_PER_LOGQUBIT) {
             ops.x(cast!(i));
+            println!("X {}", {let i: u32 = cast!(i); i});
         }
     }
 
@@ -276,6 +285,18 @@ where
         for i in 0..PHYSQUBIT_PER_LOGQUBIT {
             ops.measure(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i), cast!(s * PHYSQUBIT_PER_LOGQUBIT + i));
         }
+        self.instance.send_receive(ops.as_ref(), &mut self.instance_buf);
+        ops.clear();
+        let mut sum = 0;
+        for i in 0..PHYSQUBIT_PER_LOGQUBIT {
+            if self.instance_buf.get(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i)) {
+                ops.x(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i));
+                sum += 1;
+            }
+            eprintln!("Measure {}[{}] -> {} ({})", q, i, self.instance_buf.get(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i)), q * PHYSQUBIT_PER_LOGQUBIT + i);
+        }
+        eprintln!("Measure {}    -> {}", q, sum >= MEASURE_THRESHOLD);
+        self.measured[s as usize] = sum >= MEASURE_THRESHOLD;
     }
 }
 
@@ -304,45 +325,31 @@ where
 #[cfg(test)]
 mod tests {
     #[allow(unused_imports)]
-    use lay::{Layer, OpsVec};
+    use lay::{Layer, OpsVec, Measured};
     #[allow(unused_imports)]
     use lay_simulator_gk::{ GottesmanKnillSimulator, DefaultRng };
     #[allow(unused_imports)]
     use crate::{SteaneLayer, Syndrome};
 
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-
-    #[test]
-    fn it_works2() {
-        let mut steane = SteaneLayer::from_seed_with_gk(1, 16);
+    fn initialize() {
+        let mut steane = SteaneLayer::from_seed_with_gk(16, 1);
         let mut ops = OpsVec::<SteaneLayer<_>>::new();
         ops.initialize();
         steane.send(ops.as_ref());
-        /*
-        ops.syndrome_measure_and_recover();
-        ops.syndrome_measure_and_recover();
-        ops.syndrome_measure_and_recover();
-        ops.syndrome_measure_and_recover();
-        ops.syndrome_measure_and_recover();
-        eprintln!("END First syndrome measurement 5 times");
-        eprintln!("Expected: not shown");
-        ops.syndrome_measure_and_recover();
-        ops.x(0);
-        eprintln!("Expected: not shown");
-        ops.syndrome_measure_and_recover();
-        ops.x(12);
-        eprintln!("Expected: 12");
-        ops.syndrome_measure_and_recover();
-        eprintln!("Expected: not shown");
-        ops.syndrome_measure_and_recover();
-        ops.sim.z(8);
-        eprintln!("Expected: 8");
-        ops.syndrome_measure_and_recover();
-        eprintln!("Expected: not shown");
-        ops.syndrome_measure_and_recover();
-        */
+    }
+
+    #[test]
+    fn initialize_and_measure() {
+        let mut steane = SteaneLayer::from_seed_with_gk(16, 1);
+        let mut ops = steane.opsvec();
+        let mut buf = steane.make_buffer();
+        ops.initialize();
+        ops.x(1);
+        ops.measure(0, 0);
+        ops.measure(1, 1);
+        steane.send_receive(ops.as_ref(), &mut buf);
+        assert_eq!(buf.get(0), false);
+        assert_eq!(buf.get(1), true);
     }
 }

@@ -3,7 +3,7 @@ use lay_simulator_gk::GottesmanKnillSimulator;
 use lay_steane::{SteaneLayer, Syndrome};
 
 fn main() {
-    let mut steane = SteaneLayer::from_seed_with_gk(1, 16);
+    let mut steane = SteaneLayer::from_seed_with_gk(16, 1);
     let mut ops = OpsVec::new();
     let mut inner_ops = OpsVec::<GottesmanKnillSimulator<_>>::new();
     ops.initialize();
