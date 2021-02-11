@@ -7,7 +7,6 @@ macro_rules! cast { ($n:expr) => { cast($n).unwrap() } }
 
 const PHYSQUBIT_PER_LOGQUBIT: u32 = 7;
 const MEASURE_ANCILLA_QUBITS: u32 = 6;
-const MEASURE_THRESHOLD: u32 = 4;
 
 pub struct SteaneLayer<L: Layer> {
     pub instance: L,
@@ -282,21 +281,13 @@ where
     }
 
     fn measure(&mut self, q: u32, s: u32, ops: &mut OpsVec<L>) {
+        let ancilla = cast!(self.measure_ancilla());
         for i in 0..PHYSQUBIT_PER_LOGQUBIT {
-            ops.measure(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i), cast!(s * PHYSQUBIT_PER_LOGQUBIT + i));
+            ops.cx(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i), cast!(0));
         }
+        ops.measure(ancilla, cast!(0));
         self.instance.send_receive(ops.as_ref(), &mut self.instance_buf);
-        ops.clear();
-        let mut sum = 0;
-        for i in 0..PHYSQUBIT_PER_LOGQUBIT {
-            if self.instance_buf.get(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i)) {
-                ops.x(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i));
-                sum += 1;
-            }
-            eprintln!("Measure {}[{}] -> {} ({})", q, i, self.instance_buf.get(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i)), q * PHYSQUBIT_PER_LOGQUBIT + i);
-        }
-        eprintln!("Measure {}    -> {}", q, sum >= MEASURE_THRESHOLD);
-        self.measured[s as usize] = sum >= MEASURE_THRESHOLD;
+        self.measured[s as usize] = self.instance_buf.get(cast!(0));
     }
 }
 
