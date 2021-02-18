@@ -1,6 +1,6 @@
 [package]
 name = "lay-steane"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["gyu-don <takumi.kt+git@gmail.com>"]
 edition = "2018"
 description = "Steane code for lay"
@@ -16,4 +16,4 @@ test-blueqat = ["lay-simulator-blueqat"]
 lay = "0.1.0"
 lay-simulator-gk = "0.1.0"
 num-traits = "0.2.14"
-lay-simulator-blueqat = { path = "../lay-simulator-blueqat", optional = true }
+lay-simulator-blueqat = { git = "https://github.com/quantum-lay/lay-simulator-blueqat", optional = true }
