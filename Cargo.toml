@@ -7,9 +7,13 @@ description = "Steane code for lay"
 license = "Apache-2.0"
 publish = true
 
+[features]
+test-blueqat = ["lay-simulator-blueqat"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 lay = "0.1.0"
 lay-simulator-gk = "0.1.0"
 num-traits = "0.2.14"
+lay-simulator-blueqat = { path = "../lay-simulator-blueqat", optional = true }

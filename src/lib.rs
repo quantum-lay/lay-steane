@@ -174,7 +174,7 @@ where
     }
 
     fn syndrome_measure_and_recover(&mut self, ops: &mut OpsVec<L>) {
-        eprintln!("START syndrome_measure_and_recover");
+        // eprintln!("START syndrome_measure_and_recover");
         let m0 = self.measure_ancilla();
         for i in 0..self.n_logical_qubits {
             let offset = i * PHYSQUBIT_PER_LOGQUBIT;
@@ -215,7 +215,7 @@ where
             let mut buf = self.instance.make_buffer();
             self.instance.send_receive(ops.as_ref(), &mut buf);
             let measured = buf.get_range_u8(0, MEASURE_ANCILLA_QUBITS as usize);
-            eprintln!("logical qubit: {}, measured: {:b}", i, measured);
+            // eprintln!("logical qubit: {}, measured: {:b}", i, measured);
             ops.clear();
             for j in 0..MEASURE_ANCILLA_QUBITS {
                 // reset
@@ -225,16 +225,16 @@ where
             }
             if measured & 7 > 0 {
                 let err_x = ERR_TABLE_X[(measured & 7) as usize] + i * PHYSQUBIT_PER_LOGQUBIT;
-                eprintln!("Z Err on {}", err_x);
+                // eprintln!("Z Err on {}", err_x);
                 ops.z(cast!(err_x));
             }
             if (measured >> 3) > 0 {
                 let err_z = ERR_TABLE_Z[(measured >> 3) as usize] + i * PHYSQUBIT_PER_LOGQUBIT;
-                eprintln!("X Err on {}", err_z);
+                // eprintln!("X Err on {}", err_z);
                 ops.x(cast!(err_z));
             }
         }
-        eprintln!("END   syndrome_measure_and_recover");
+        // eprintln!("END   syndrome_measure_and_recover");
     }
 
     fn x(&mut self, q: u32, ops: &mut OpsVec<L>) {
@@ -287,8 +287,10 @@ where
         }
         ops.measure(cast!(m0), cast!(0));
         self.instance.send_receive(ops.as_ref(), &mut self.instance_buf);
+        ops.clear();
         let result = self.instance_buf.get(cast!(0));
         self.measured[s as usize] = result;
+        // eprintln!("Slot {}, measure: {}", s, result as u8);
         if result {
             ops.x(cast!(m0));
         }
@@ -400,6 +402,32 @@ mod tests {
             eprintln!("try: {}, |{}{}{}>", i, m0 as u8, m1 as u8, m2 as u8);
             assert_eq!(m0, m1);
             assert_eq!(m0, m2);
+        }
+    }
+
+    #[cfg(feature = "test-blueqat")]
+    #[test]
+    fn bell_bq() {
+        use lay_simulator_blueqat::BlueqatSimulator;
+        let mut steane = SteaneLayer::from_instance(
+            BlueqatSimulator::new().unwrap(),
+            2,
+        );
+        let mut ops = steane.opsvec();
+        let mut buf = steane.make_buffer();
+        ops.initialize();
+        ops.h(1);
+        ops.cx(1, 0);
+        ops.measure(0, 0);
+        let mut ops2 = steane.opsvec();
+        ops2.measure(1, 1);
+        for i in 0..10 {
+            steane.send_receive(ops.as_ref(), &mut buf).unwrap();
+            let s0 = buf.get(0);
+            steane.send_receive(ops2.as_ref(), &mut buf).unwrap();
+            let s1 = buf.get(1);
+            eprintln!("try: {}, |{}{}>", i, buf.get(0) as u8, buf.get(1) as u8);
+            assert_eq!(s0, s1);
         }
     }
 }
