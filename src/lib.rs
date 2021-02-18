@@ -8,6 +8,7 @@ macro_rules! cast { ($n:expr) => { cast($n).unwrap() } }
 const PHYSQUBIT_PER_LOGQUBIT: u32 = 7;
 const MEASURE_ANCILLA_QUBITS: u32 = 6;
 
+#[derive(Debug)]
 pub struct SteaneLayer<L: Layer> {
     pub instance: L,
     n_logical_qubits: u32,
@@ -41,6 +42,7 @@ impl SteaneLayer<GottesmanKnillSimulator<DefaultRng>> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct SteaneBuffer(Vec<bool>);
 
 impl Measured for SteaneBuffer
@@ -240,7 +242,6 @@ where
     fn x(&mut self, q: u32, ops: &mut OpsVec<L>) {
         for i in (q * PHYSQUBIT_PER_LOGQUBIT)..(q * PHYSQUBIT_PER_LOGQUBIT + PHYSQUBIT_PER_LOGQUBIT) {
             ops.x(cast!(i));
-            println!("X {}", {let i: u32 = cast!(i); i});
         }
     }
 
@@ -362,6 +363,39 @@ mod tests {
         for i in 0..10 {
             steane.send_receive(ops.as_ref(), &mut buf);
             assert!(buf.get(0));
+        }
+    }
+
+    #[test]
+    fn cx2() {
+        let mut steane = SteaneLayer::from_seed_with_gk(4, 4);
+        let mut ops = steane.opsvec();
+        let mut buf = steane.make_buffer();
+        ops.initialize();
+        ops.x(1);
+        ops.cx(1, 0);
+        ops.measure(0, 0);
+        ops.measure(1, 1);
+        for i in 0..10 {
+            steane.send_receive(ops.as_ref(), &mut buf);
+            assert!(buf.get(0));
+            assert!(buf.get(1));
+        }
+    }
+
+    #[test]
+    fn cx3() {
+        let mut steane = SteaneLayer::from_seed_with_gk(4, 4);
+        let mut ops = steane.opsvec();
+        let mut buf = steane.make_buffer();
+        ops.initialize();
+        ops.cx(0, 2);
+        ops.measure(0, 0);
+        ops.measure(2, 2);
+        for i in 0..10 {
+            steane.send_receive(ops.as_ref(), &mut buf);
+            assert!(!buf.get(0));
+            assert!(!buf.get(2));
         }
     }
 
