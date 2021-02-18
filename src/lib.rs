@@ -281,13 +281,17 @@ where
     }
 
     fn measure(&mut self, q: u32, s: u32, ops: &mut OpsVec<L>) {
-        let ancilla = cast!(self.measure_ancilla());
+        let m0 = self.measure_ancilla();
         for i in 0..PHYSQUBIT_PER_LOGQUBIT {
-            ops.cx(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i), cast!(0));
+            ops.cx(cast!(q * PHYSQUBIT_PER_LOGQUBIT + i), cast!(m0));
         }
-        ops.measure(ancilla, cast!(0));
+        ops.measure(cast!(m0), cast!(0));
         self.instance.send_receive(ops.as_ref(), &mut self.instance_buf);
-        self.measured[s as usize] = self.instance_buf.get(cast!(0));
+        let result = self.instance_buf.get(cast!(0));
+        self.measured[s as usize] = result;
+        if result {
+            ops.x(cast!(m0));
+        }
     }
 }
 
@@ -342,5 +346,60 @@ mod tests {
         steane.send_receive(ops.as_ref(), &mut buf);
         assert_eq!(buf.get(0), false);
         assert_eq!(buf.get(1), true);
+    }
+
+    #[test]
+    fn cx() {
+        let mut steane = SteaneLayer::from_seed_with_gk(4, 4);
+        let mut ops = steane.opsvec();
+        let mut buf = steane.make_buffer();
+        ops.initialize();
+        ops.x(1);
+        ops.cx(1, 0);
+        ops.measure(0, 0);
+        for i in 0..10 {
+            steane.send_receive(ops.as_ref(), &mut buf);
+            assert!(buf.get(0));
+        }
+    }
+
+    #[test]
+    fn bell() {
+        let mut steane = SteaneLayer::from_seed_with_gk(4, 4);
+        let mut ops = steane.opsvec();
+        let mut buf = steane.make_buffer();
+        ops.initialize();
+        ops.h(1);
+        ops.cx(1, 0);
+        ops.measure(0, 0);
+        ops.measure(1, 1);
+        for i in 0..10 {
+            steane.send_receive(ops.as_ref(), &mut buf);
+            eprintln!("try: {}, |{}{}>", i, buf.get(0) as u8, buf.get(1) as u8);
+            assert_eq!(buf.get(0), buf.get(1));
+        }
+    }
+
+    #[test]
+    fn ghz() {
+        let mut steane = SteaneLayer::from_seed_with_gk(4, 4);
+        let mut ops = steane.opsvec();
+        let mut buf = steane.make_buffer();
+        ops.initialize();
+        ops.h(1);
+        ops.cx(1, 0);
+        ops.cx(1, 2);
+        ops.measure(0, 0);
+        ops.measure(1, 1);
+        ops.measure(2, 2);
+        for i in 0..10 {
+            steane.send_receive(ops.as_ref(), &mut buf);
+            let m0 = buf.get(0);
+            let m1 = buf.get(1);
+            let m2 = buf.get(2);
+            eprintln!("try: {}, |{}{}{}>", i, m0 as u8, m1 as u8, m2 as u8);
+            assert_eq!(m0, m1);
+            assert_eq!(m0, m2);
+        }
     }
 }
