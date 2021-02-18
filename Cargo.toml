@@ -16,4 +16,4 @@ test-blueqat = ["lay-simulator-blueqat"]
 lay = "0.1.0"
 lay-simulator-gk = "0.1.0"
 num-traits = "0.2.14"
-lay-simulator-blueqat = { git = "https://github.com/quantum-lay/lay-simulator-blueqat", optional = true }
+lay-simulator-blueqat = { version = "0.1.0", optional = true }
