@@ -266,12 +266,14 @@ where
     fn s(&mut self, q: u32, ops: &mut OpsVec<L>) {
         for i in (q * PHYSQUBIT_PER_LOGQUBIT)..(q * PHYSQUBIT_PER_LOGQUBIT + PHYSQUBIT_PER_LOGQUBIT) {
             ops.s(cast!(i));
+            ops.z(cast!(i));
         }
     }
 
     fn sdg(&mut self, q: u32, ops: &mut OpsVec<L>) {
         for i in (q * PHYSQUBIT_PER_LOGQUBIT)..(q * PHYSQUBIT_PER_LOGQUBIT + PHYSQUBIT_PER_LOGQUBIT) {
             ops.sdg(cast!(i));
+            ops.z(cast!(i));
         }
     }
 
